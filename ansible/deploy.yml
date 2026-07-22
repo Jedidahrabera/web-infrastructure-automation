@@ -1,0 +1,97 @@
+---
+- name: Replicate Day 2 setup
+  hosts: ubuntu_servers
+  gather_facts: false
+  become: yes
+  vars:
+    new_username: "sysadmin"
+    new_user_password: "{{ 'Jedidah2026' | password_hash('sha512') }}"
+    ssh_port: 22
+
+  tasks:
+    - name: Update apt repository cache
+      apt:
+        update_cache: yes
+
+    - name: Create a new standard user with sudo privileges
+      user:
+        name: "{{ new_username }}"
+        password: "{{ new_user_password }}"
+        shell: /bin/bash
+        groups: sudo
+        append: yes
+        state: present
+
+    - name: Ensure OpenSSH Server is installed
+      apt:
+        name: openssh-server
+        state: present
+
+    - name: Disable Root SSH Login for security
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?PermitRootLogin'
+        line: 'PermitRootLogin no'
+        state: present
+        notify: Restart SSH
+
+    - name: Reset UFW to default rules
+      ufw:
+        state: reset
+
+    - name: Allow SSH traffic
+      ufw:
+        rule: allow
+        port: "{{ ssh_port }}"
+        proto: tcp
+
+    - name: Allow HTTP traffic
+      ufw:
+        rule: allow
+        port: 80
+        proto: tcp
+
+    - name: Allow HTTPS traffic
+      ufw:
+        rule: allow
+        port: 443
+        proto: tcp
+
+    - name: Enable UFW firewall
+      ufw:
+        state: enabled
+
+    - name: Install Nginx web server
+      apt:
+        name: nginx
+        state: present
+
+    - name: Ensure Nginx is started and enabled on boot
+      service:
+        name: nginx
+        state: started
+        enabled: yes
+
+    - name: Deploy custom HTML landing page
+      copy:
+        content: |
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <title>Welcome to Production Server</title>
+          </head>
+          <body>
+              <h1>Deployment Successful!</h1>
+              <p>This server was fully automated via Ansible.</p>
+          </body>
+          </html>
+        dest: /var/www/html/index.html
+        owner: www-data
+        group: www-data
+        mode: '0644'
+
+  handlers:
+    - name: Restart SSH
+      service:
+        name: ssh
+        state: restarted
